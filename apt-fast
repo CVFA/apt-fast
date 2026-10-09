@@ -82,6 +82,7 @@ TMP_aptfast_prefix="${aptfast_prefix-${TMP_RANDOM}}"
 TMP_APT_FAST_TIMEOUT="${APT_FAST_TIMEOUT-${TMP_RANDOM}}"
 TMP_APT_FAST_APT_AUTH="${APT_FAST_APT_AUTH-${TMP_RANDOM}}"
 TMP_VERBOSE_OUTPUT="${VERBOSE_OUTPUT-${TMP_RANDOM}}"
+TMP_EXTRACT_DIRECTLY="${EXTRACT_DIRECTLY-${TMP_RANDOM}}"
 TMP_ftp_proxy="${ftp_proxy-${TMP_RANDOM}}"
 TMP_http_proxy="${http_proxy-${TMP_RANDOM}}"
 TMP_https_proxy="${https_proxy-${TMP_RANDOM}}"
@@ -105,6 +106,7 @@ if [ "$root" -ne 0 ] && [ "$UID" != 0 ]; then
             APT_FAST_TIMEOUT="$TMP_APT_FAST_TIMEOUT" \
             APT_FAST_APT_AUTH="$TMP_APT_FAST_APT_AUTH" \
             VERBOSE_OUTPUT="$TMP_VERBOSE_OUTPUT" \
+            EXTRACT_DIRECTLY="$TMP_EXTRACT_DIRECTLY" \
             ftp_proxy="$TMP_ftp_proxy" \
             http_proxy="$TMP_http_proxy" \
             https_proxy="$TMP_https_proxy" \
@@ -173,6 +175,9 @@ APT_FAST_APT_AUTH=1
 # Formatted package list in download confirmation if unset
 VERBOSE_OUTPUT=
 
+# Extract source packages directly without using the system package manager
+EXTRACT_DIRECTLY=
+
 # Download command.
 _DOWNLOADER='aria2c --no-conf -c -j ${_MAXNUM} -x ${_MAXCONPERSRV} -s ${_SPLITCON} -i ${DLLIST} --min-split-size=${_MINSPLITSZ} --stream-piece-selector=${_PIECEALGO} --connect-timeout=600 --timeout=600 -m0 --header "Accept: */*"'
 
@@ -207,6 +212,7 @@ https_proxy=
 [ "$TMP_APT_FAST_TIMEOUT" = "$TMP_RANDOM" ] || APT_FAST_TIMEOUT="$TMP_APT_FAST_TIMEOUT"
 [ "$TMP_APT_FAST_APT_AUTH" = "$TMP_RANDOM" ] || APT_FAST_APT_AUTH="$TMP_APT_FAST_APT_AUTH"
 [ "$TMP_VERBOSE_OUTPUT" = "$TMP_RANDOM" ] || VERBOSE_OUTPUT="$TMP_VERBOSE_OUTPUT"
+[ "$TMP_EXTRACT_DIRECTLY" = "$TMP_RANDOM" ] || EXTRACT_DIRECTLY="$TMP_EXTRACT_DIRECTLY"
 [ "$TMP_ftp_proxy" = "$TMP_RANDOM" ] || ftp_proxy="$TMP_ftp_proxy"
 [ "$TMP_http_proxy" = "$TMP_RANDOM" ] || http_proxy="$TMP_http_proxy"
 [ "$TMP_https_proxy" = "$TMP_RANDOM" ] || https_proxy="$TMP_https_proxy"
@@ -712,17 +718,23 @@ elif [ "$option" == "source" ]; then
     display_downloadfile
     eval "${_DOWNLOADER}"
   fi
-  # We use APT manager here to provide more verbose output. This method is
-  # slightly slower then extractiong packages manually after download but also
-  # more hardened (e.g. some options like --compile are available).
-  "${_APTMGR}" "${APT_SCRIPT_WARNING[@]}" "$@"
-  # Uncomment following snippet to extract source directly and comment
-  # both lines before.
-  #while read srcfile; do
-  #  # extract only .dsc files
-  #  echo "$srcfile" | grep -q '\.dsc$' || continue
-  #  dpkg-source -x "$(basename "$srcfile")"
-  #done < "$DLLIST"
+
+  case "${EXTRACT_DIRECTLY}" in
+    1|[Tt]rue|[Yy]es)
+      # Extract source directly without using system package manager
+      while read srcfile; do
+        # extract only .dsc files
+        echo "$srcfile" | grep -q '\.dsc$' || continue
+        dpkg-source -x "$(basename "$srcfile")"
+      done < "$DLLIST"
+      ;;
+    *)
+      # We use APT manager here to provide more verbose output. This method is
+      # slightly slower then extractiong packages manually after download but also
+      # more hardened (e.g. some options like --compile are available).
+      "${_APTMGR}" "${APT_SCRIPT_WARNING[@]}" "$@"
+      ;;
+  esac
 
 # Execute package manager directly if unknown options are passed.
 else
